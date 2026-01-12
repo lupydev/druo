@@ -1,0 +1,384 @@
+{
+  "name": "Payment Retry Workflow (Python Backend)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "payment-failed",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Payment Failed Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "payment-failed"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/api/v1/retry-logic/classify",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "payment_id",
+              "value": "={{ $json.payment_id }}"
+            },
+            {
+              "name": "failure_type",
+              "value": "={{ $json.failure_type }}"
+            },
+            {
+              "name": "merchant_id",
+              "value": "={{ $json.merchant_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "classify-failure",
+      "name": "Classify Failure (Python)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-retriable",
+              "leftValue": "={{ $json.retry_enabled }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-retriable",
+      "name": "Should Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "unit": "seconds",
+        "value": "={{ Math.min(Math.max($json.delay_minutes * 0.01, 3), 15) }}"
+      },
+      "id": "wait-delay",
+      "name": "Wait for Retry Delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [910, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/api/v1/retry-logic/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "payment_id",
+              "value": "={{ $('Classify Failure (Python)').first().json.payment_id }}"
+            },
+            {
+              "name": "merchant_id",
+              "value": "={{ $('Payment Failed Webhook').first().json.merchant_id }}"
+            },
+            {
+              "name": "attempt_number",
+              "value": "={{ $json.current_attempt || 1 }}"
+            },
+            {
+              "name": "failure_type",
+              "value": "={{ $('Classify Failure (Python)').first().json.failure_type }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "execute-retry",
+      "name": "Execute Retry (Python)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1130, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/api/v1/retry-logic/update-status",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "payment_id",
+              "value": "={{ $json.payment_id }}"
+            },
+            {
+              "name": "attempt_number",
+              "value": "={{ $json.attempt_number }}"
+            },
+            {
+              "name": "success",
+              "value": "={{ $json.success }}"
+            },
+            {
+              "name": "result_code",
+              "value": "={{ $json.result_code }}"
+            },
+            {
+              "name": "result_message",
+              "value": "={{ $json.result_message }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-status",
+      "name": "Update Payment Status (Python)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-continue",
+              "leftValue": "={{ $('Execute Retry (Python)').first().json.should_continue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-continue",
+      "name": "Continue Retrying?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1570, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set-attempt",
+              "name": "current_attempt",
+              "value": "={{ $('Execute Retry (Python)').first().json.next_attempt }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-next-attempt",
+      "name": "Set Next Attempt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1790, 100]
+    },
+    {
+      "parameters": {
+        "unit": "seconds",
+        "value": "=5"
+      },
+      "id": "wait-next-retry",
+      "name": "Wait Before Next Retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2010, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/api/v1/retry-logic/update-status",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "payment_id",
+              "value": "={{ $('Payment Failed Webhook').first().json.payment_id }}"
+            },
+            {
+              "name": "attempt_number",
+              "value": "=0"
+            },
+            {
+              "name": "success",
+              "value": "=false"
+            },
+            {
+              "name": "result_code",
+              "value": "non_retriable"
+            },
+            {
+              "name": "result_message",
+              "value": "={{ $('Classify Failure (Python)').first().json.reason }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-non-retriable",
+      "name": "Mark as Non-Retriable",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 400]
+    },
+    {
+      "parameters": {},
+      "id": "end-success",
+      "name": "End: Completed",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1790, 300]
+    }
+  ],
+  "connections": {
+    "Payment Failed Webhook": {
+      "main": [
+        [
+          {
+            "node": "Classify Failure (Python)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Failure (Python)": {
+      "main": [
+        [
+          {
+            "node": "Should Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Retry?": {
+      "main": [
+        [
+          {
+            "node": "Wait for Retry Delay",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark as Non-Retriable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Retry Delay": {
+      "main": [
+        [
+          {
+            "node": "Execute Retry (Python)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Retry (Python)": {
+      "main": [
+        [
+          {
+            "node": "Update Payment Status (Python)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Payment Status (Python)": {
+      "main": [
+        [
+          {
+            "node": "Continue Retrying?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continue Retrying?": {
+      "main": [
+        [
+          {
+            "node": "Set Next Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "End: Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Next Attempt": {
+      "main": [
+        [
+          {
+            "node": "Wait Before Next Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Before Next Retry": {
+      "main": [
+        [
+          {
+            "node": "Execute Retry (Python)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "pinData": {}
+}
