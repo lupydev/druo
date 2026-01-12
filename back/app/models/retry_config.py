@@ -18,18 +18,18 @@ class RetryConfigBase(SQLModel):
 
     # Insufficient funds settings
     insufficient_funds_enabled: bool = Field(default=True)
-    insufficient_funds_delay: int = Field(default=1440, ge=1)  # 24 hours in minutes
+    insufficient_funds_delay: int = Field(default=1440, ge=0)  # 24 hours in minutes
 
     # Card declined settings
     card_declined_enabled: bool = Field(default=True)
-    card_declined_delay: int = Field(default=60, ge=1)  # 1 hour
+    card_declined_delay: int = Field(default=60, ge=0)  # 1 hour
     # Network timeout settings
     network_timeout_enabled: bool = Field(default=True)
     network_timeout_delay: int = Field(default=0, ge=0)  # immediate
 
     # Processor downtime settings
     processor_downtime_enabled: bool = Field(default=True)
-    processor_downtime_delay: int = Field(default=30, ge=1)  # 30 minutes
+    processor_downtime_delay: int = Field(default=30, ge=0)  # 30 minutes
 
 
 class MerchantRetryConfig(RetryConfigBase, table=True):
@@ -60,11 +60,11 @@ class RetryConfigUpdate(SQLModel):
     max_attempts: int | None = Field(default=None, ge=1, le=5)
 
     insufficient_funds_enabled: bool | None = None
-    insufficient_funds_delay: int | None = None
+    insufficient_funds_delay: int | None = Field(default=None, ge=0)
     card_declined_enabled: bool | None = None
-    card_declined_delay: int | None = None
+    card_declined_delay: int | None = Field(default=None, ge=0)
 
     network_timeout_enabled: bool | None = None
-    network_timeout_delay: int | None = None
+    network_timeout_delay: int | None = Field(default=None, ge=0)
     processor_downtime_enabled: bool | None = None
-    processor_downtime_delay: int | None = None
+    processor_downtime_delay: int | None = Field(default=None, ge=0)
