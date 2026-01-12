@@ -1,0 +1,27 @@
+[project]
+name = "app"
+version = "1.0.0"
+description = "Automatic Payment Retry System - MVP for Novo/DRUO"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+    { name = "Luis Guzman" }
+]
+
+dependencies = [
+    # FastAPI + Async Server
+    "fastapi[standard]>=0.128.0",
+    
+    # Database - Async PostgreSQL
+    "sqlmodel>=0.0.31",
+    "asyncpg>=0.31.0",
+    
+    # Validation & Settings
+    "pydantic-settings>=2.12.0",
+    
+    # HTTP Client (webhooks to n8n)
+    "httpx>=0.28.0",
+
+    "greenlet>=3.3.0",
+]
+
