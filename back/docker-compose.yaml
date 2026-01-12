@@ -1,0 +1,82 @@
+services:
+  # ============================================
+  # Backend API - FastAPI + SQLModel
+  # ============================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development # Use development stage with hot reload
+    container_name: retry-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/retry_db
+      - N8N_WEBHOOK_URL=http://n8n:5678/webhook
+      - ENVIRONMENT=development
+    volumes:
+      - ./app:/app/app # Mount only app folder for hot reload
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - retry-network
+    restart: unless-stopped
+
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  db:
+    image: postgres:15-alpine
+    container_name: retry-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=retry_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - retry-network
+    restart: unless-stopped
+
+  # ============================================
+  # n8n Workflow Automation
+  # ============================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: retry-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin123
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678
+      - GENERIC_TIMEZONE=America/Bogota
+      - N8N_SECURE_COOKIE=false
+      # Para conectar con el backend
+      - BACKEND_URL=http://backend:8000
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - retry-network
+    restart: unless-stopped
+
+networks:
+  retry-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  n8n_data:
